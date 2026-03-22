@@ -12,6 +12,7 @@ dist/
 !package.json
 !package-lock.json
 !tsconfig.json
+!.vscode/mcp.json
 *.txt
 *.sh
 *.ps1
