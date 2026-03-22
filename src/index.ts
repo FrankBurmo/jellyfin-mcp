@@ -155,6 +155,18 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
       description: "Triggers a full Jellyfin library rescan to pick up file changes.",
       inputSchema: { type: "object", properties: {} },
     },
+    {
+      name: "analyze_tv_structure",
+      description:
+        "Analyzes the TV series library for structural problems: " +
+        "(1) duplicate series entries — same series registered multiple times in Jellyfin, " +
+        "(2) series folders that use release-pack names instead of clean Show Title folders, " +
+        "(3) episodes stored in per-episode subdirectories instead of Season folders, " +
+        "(4) seasons whose folder names cause Jellyfin to register a wrong season number " +
+        "(e.g. year or release-pack number mistaken for season number). " +
+        "Returns a full report with paths and recommendations.",
+      inputSchema: { type: "object", properties: {} },
+    },
   ],
 }));
 
@@ -203,6 +215,9 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
     case "refresh_library":
       await jellyfin.refreshLibrary();
       return ok({ success: true, message: "Library refresh triggered." });
+
+    case "analyze_tv_structure":
+      return ok(await analyzeTvStructure());
 
     default:
       throw new Error(`Unknown tool: ${name}`);
@@ -574,6 +589,160 @@ async function executeMove(fromLinux: string, toLinux: string, dryRun: boolean) 
   } catch (err) {
     return { error: String(err), from: fromWin, to: toWin };
   }
+}
+
+async function analyzeTvStructure() {
+  const [seriesResp, seasonsResp, epResp] = await Promise.all([
+    jellyfin.getItems({
+      IncludeItemTypes: "Series",
+      Recursive: "true",
+      Fields: "Path,ProviderIds",
+    }),
+    jellyfin.getItems({
+      IncludeItemTypes: "Season",
+      Recursive: "true",
+      Fields: "Path,SeriesId,SeriesName,IndexNumber",
+    }),
+    jellyfin.getItems({
+      IncludeItemTypes: "Episode",
+      Recursive: "true",
+      Fields: "Path,SeriesId,SeriesName,SeasonId,ParentIndexNumber,IndexNumber",
+    }),
+  ]);
+
+  const seriesMap = new Map(seriesResp.Items.map((s) => [s.Id, s]));
+
+  // ── 1. Duplicate series (same Jellyfin display name, multiple entries) ──────
+  const seriesByName = new Map<string, JellyfinItem[]>();
+  for (const s of seriesResp.Items) {
+    if (!seriesByName.has(s.Name)) seriesByName.set(s.Name, []);
+    seriesByName.get(s.Name)!.push(s);
+  }
+
+  const duplicateSeries = [...seriesByName.entries()]
+    .filter(([, list]) => list.length > 1)
+    .map(([name, list]) => ({
+      name,
+      entries: list.map((s) => ({
+        path: s.Path ?? "(no path)",
+        episode_count: epResp.Items.filter((e) => e.SeriesId === s.Id).length,
+      })),
+    }))
+    .sort((a, b) => a.name.localeCompare(b.name));
+
+  // ── 2. Series folders with release-pack names ────────────────────────────
+  const RELEASE_SIGNS =
+    /\b(DVDRip|BluRay|BDRip|WEBRip|WEB-DL|HDTV|x264|x265|HEVC|AV1|H\.?264|H\.?265|1080p|720p|480p|2160p)\b/i;
+
+  const releaseFolderSeries = seriesResp.Items
+    .filter((s) => {
+      if (!s.Path) return false;
+      const folder = s.Path.split("/").pop() ?? "";
+      return RELEASE_SIGNS.test(folder);
+    })
+    .map((s) => ({
+      name: s.Name,
+      path: s.Path!,
+      folder_name: s.Path!.split("/").pop()!,
+      suggested_folder: s.Name,
+    }))
+    .sort((a, b) => a.name.localeCompare(b.name));
+
+  // ── 3. Episodes stored in per-episode subdirectories ────────────────────
+  type SeriesEpData = {
+    name: string;
+    seriesPath: string | undefined;
+    allFolders: Set<string>;
+    eps: JellyfinItem[];
+  };
+
+  const bySeriesEps = new Map<string, SeriesEpData>();
+  for (const ep of epResp.Items) {
+    const sid = ep.SeriesId ?? "";
+    if (!bySeriesEps.has(sid)) {
+      bySeriesEps.set(sid, {
+        name: ep.SeriesName ?? sid,
+        seriesPath: seriesMap.get(sid)?.Path,
+        allFolders: new Set(),
+        eps: [],
+      });
+    }
+    const d = bySeriesEps.get(sid)!;
+    if (ep.Path) d.allFolders.add(ep.Path.split("/").slice(0, -1).join("/"));
+    d.eps.push(ep);
+  }
+
+  // An episode is in its own folder when its immediate parent folder looks like a
+  // scene release name: contains SxxExx or YYYY.Sxx at the start.
+  const EP_FOLDER_RE = /[Ss]\d{1,2}[Ee]\d{1,2}|^\d{4}\.[Ss]\d{2}/;
+
+  const episodesInOwnFolders = [];
+  for (const [, data] of bySeriesEps) {
+    const inEpFolder = data.eps.filter((ep) => {
+      if (!ep.Path) return false;
+      const parts = ep.Path.split("/");
+      const parentFolder = parts[parts.length - 2] ?? "";
+      return EP_FOLDER_RE.test(parentFolder);
+    });
+    if (inEpFolder.length > 0) {
+      const uniqueFolders = [
+        ...new Set(
+          inEpFolder.map((ep) => ep.Path!.split("/").slice(0, -1).join("/")),
+        ),
+      ]
+        .sort()
+        .slice(0, 5);
+      episodesInOwnFolders.push({
+        series: data.name,
+        series_path: data.seriesPath ?? "(unknown)",
+        total_episodes: data.eps.length,
+        episodes_in_own_folders: inEpFolder.length,
+        example_folders: uniqueFolders,
+      });
+    }
+  }
+  episodesInOwnFolders.sort((a, b) => a.series.localeCompare(b.series));
+
+  // ── 4. Wrong season numbers ──────────────────────────────────────────────
+  // Detects seasons where the folder name contains a season number that differs
+  // from what Jellyfin has registered — usually caused by a year (e.g. 1985)
+  // or release-pack suffix (e.g. FS80) being parsed as the season index.
+  const wrongSeasonNumbers = [];
+  for (const season of seasonsResp.Items) {
+    if (!season.Path || season.IndexNumber === undefined) continue;
+    const folderName = season.Path.split("/").pop() ?? "";
+    const match =
+      folderName.match(/[Ss]e(?:a?s?o?n?)?\s*(\d{1,2})\b/i) ??
+      folderName.match(/[Ss]esong\s*(\d{1,2})\b/i);
+    if (match) {
+      const folderSeasonNum = parseInt(match[1], 10);
+      if (folderSeasonNum !== season.IndexNumber && season.IndexNumber > 20) {
+        wrongSeasonNumbers.push({
+          series: season.SeriesName ?? "(unknown)",
+          registered_season: season.IndexNumber,
+          folder_season: folderSeasonNum,
+          folder: folderName,
+          full_path: season.Path,
+        });
+      }
+    }
+  }
+
+  return {
+    summary: {
+      total_series: seriesResp.TotalRecordCount,
+      total_seasons: seasonsResp.TotalRecordCount,
+      total_episodes: epResp.TotalRecordCount,
+      duplicate_series_count: duplicateSeries.length,
+      release_pack_series_folders_count: releaseFolderSeries.length,
+      series_with_episodes_in_own_folders_count: episodesInOwnFolders.length,
+      wrong_season_numbers_count: wrongSeasonNumbers.length,
+    },
+    duplicate_series: duplicateSeries,
+    release_pack_series_folders: releaseFolderSeries,
+    episodes_in_own_folders: episodesInOwnFolders,
+    wrong_season_numbers: wrongSeasonNumbers,
+  };
 }
 
 // ─── Start ─────────────────────────────────────────────────────────────────

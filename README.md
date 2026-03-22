@@ -15,6 +15,7 @@ and reorganize your library — all via natural language.
 | `generate_move_plan` | Generate rename/move plan for multi-version consolidation |
 | `execute_move` | Move or rename a file (Linux path → Windows UNC auto-convert). Use `dry_run: true` first |
 | `refresh_library` | Trigger a full Jellyfin library rescan |
+| `analyze_tv_structure` | Full structural audit of the TV library: duplicate series entries, release-pack folder names, episodes in per-episode subdirectories, wrong season numbers |
 
 ## Setup
 
@@ -56,6 +57,19 @@ Open VS Code, start a Copilot chat in Agent mode, and the `jellyfin` MCP server 
 7. refresh_library                     → Jellyfin picks up the changes
 ```
 
+### TV series audit
+
+```
+1. analyze_tv_structure                → full structural report:
+                                           - duplicate series entries
+                                           - series folders with release-pack names
+                                           - episodes in per-episode subdirectories
+                                           - wrong season numbers (year/release parsed as season)
+2. execute_move dry_run=true           → verify a move before executing
+3. execute_move dry_run=false          → move the file/folder
+4. refresh_library                     → Jellyfin picks up the changes
+```
+
 ## Path mapping
 
 Jellyfin runs on Linux and reports paths like `/mnt/usb1/Filmer/...`.
@@ -81,6 +95,7 @@ src/
 dist/            Compiled JavaScript
 docs/
   STRATEGI-MEDIEFILER.md   Media organization strategy (Norwegian)
+  tv-serie-rapport.md      TV series structural audit report
 .vscode/
   mcp.json       VS Code Copilot MCP server configuration
 .env.example     Environment variable template

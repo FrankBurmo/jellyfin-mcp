@@ -33,6 +33,7 @@ docs/           — Documentation (STRATEGI-MEDIEFILER.md)
 | `generate_move_plan` | Generates rename plan for multi-version consolidation |
 | `execute_move` | Moves/renames a file. Always accepts Linux paths; converts to Windows UNC internally. `dry_run: true` by default |
 | `refresh_library` | Triggers Jellyfin library rescan |
+| `analyze_tv_structure` | Full structural audit of the TV library: duplicate series entries, series folders with release-pack names, episodes in per-episode subdirectories, wrong season numbers (year/release number mistaken for season number) |
 
 ---
 

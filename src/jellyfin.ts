@@ -4,7 +4,7 @@ import https from "node:https";
 export interface JellyfinItem {
   Id: string;
   Name: string;
-  Type: "Movie" | "Series" | "Episode" | string;
+  Type: "Movie" | "Series" | "Season" | "Episode" | string;
   Path?: string;
   ProviderIds?: {
     Imdb?: string;
@@ -17,6 +17,14 @@ export interface JellyfinItem {
     Size?: number;
     Container?: string;
   }>;
+  // Season / Episode fields
+  SeriesId?: string;
+  SeriesName?: string;
+  SeasonId?: string;
+  /** Season number (on Season items) or episode number (on Episode items) */
+  IndexNumber?: number;
+  /** Season number on Episode items */
+  ParentIndexNumber?: number;
 }
 
 export interface ItemsResponse {
