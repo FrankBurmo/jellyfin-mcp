@@ -11,6 +11,7 @@ dist/
 *.json
 !package.json
 !package-lock.json
+!tsconfig.json
 *.txt
 *.sh
 *.ps1
