@@ -1,0 +1,23 @@
+{
+  "name": "jellyfin-mcp",
+  "version": "1.0.0",
+  "description": "MCP server for Jellyfin media library management — find duplicates, fix CD-splits, organize multi-version files",
+  "type": "module",
+  "main": "dist/index.js",
+  "bin": {
+    "jellyfin-mcp": "./dist/index.js"
+  },
+  "scripts": {
+    "build": "tsc",
+    "start": "node dist/index.js",
+    "dev": "tsx src/index.ts"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.9.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "tsx": "^4.19.0",
+    "typescript": "^5.7.0"
+  }
+}
