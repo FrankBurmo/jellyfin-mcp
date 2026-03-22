@@ -3,7 +3,7 @@
     "jellyfin": {
       "type": "stdio",
       "command": "node",
-      "args": ["dist/index.js"],
+      "args": ["--env-file=.env", "dist/index.js"],
       "cwd": "${workspaceFolder}",
       "env": {}
     }
