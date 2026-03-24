@@ -94,12 +94,25 @@ src/
   quality.ts     Video quality classification from filename
 dist/            Compiled JavaScript
 docs/
-  STRATEGI-MEDIEFILER.md   Media organization strategy (Norwegian)
+  JELLYFIN-MEDIA-GUIDE.md  Media organisation best practice guide
   tv-serie-rapport.md      TV series structural audit report
 .vscode/
   mcp.json       VS Code Copilot MCP server configuration
 .env.example     Environment variable template
 ```
+
+## Documentation
+
+See **[docs/JELLYFIN-MEDIA-GUIDE.md](docs/JELLYFIN-MEDIA-GUIDE.md)** for the complete
+media organisation best practice guide, covering:
+
+- Folder structure for movies, TV series, and anime
+- Multi-version movies and CD-split naming
+- NFO metadata files and artwork conventions
+- Subtitle naming and external tracks
+- Extras, trailers, and featurettes
+- TV specials (Season 0) and anime naming
+- Library scanning, performance, and plugin recommendations
 
 ## Development
 

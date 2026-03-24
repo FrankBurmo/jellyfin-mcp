@@ -17,7 +17,7 @@ src/
   paths.ts      — Linux → Windows UNC path mapping (reads MOUNT_* env vars)
   quality.ts    — Filename quality classifier (resolution, source, codec)
 dist/           — Compiled output (tsc → run with node dist/index.js)
-docs/           — Documentation (STRATEGI-MEDIEFILER.md)
+docs/           — Documentation (see JELLYFIN-MEDIA-GUIDE.md)
 ```
 
 ---
@@ -120,3 +120,17 @@ The server uses stdio transport — it reads JSON-RPC from stdin and writes to s
 - **API key** (`X-MediaBrowser-Token` header) is sufficient for all read operations and library refresh
 - `POST /Items/{id}` metadata update requires a **user session token** (from `/Users/AuthenticateByName`) — the API key alone returns 400. Use NFO files instead for permanent metadata overrides.
 - Library refresh: `POST /Library/Refresh` — no body required, just the token header.
+
+---
+
+## Media Organisation Reference
+
+For full naming conventions, NFO format, artwork, subtitle naming, TV specials, anime,
+and library best practices, see **[docs/JELLYFIN-MEDIA-GUIDE.md](../docs/JELLYFIN-MEDIA-GUIDE.md)**.
+
+Key rules summarised:
+- One folder per movie: `Title (Year)/Title (Year).mkv`
+- Multi-version: identical base name, version label after ` - ` (e.g. `Film (2020) - 1080p.mkv`)
+- TV episodes: `Series Title SxxExx.mkv` in `Season XX/` folders
+- NFO files override all scraped metadata and persist across database rebuilds
+- Always `dry_run=true` before any `execute_move` call

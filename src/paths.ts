@@ -18,19 +18,6 @@ export function getMappingsFromEnv(): MountMapping[] {
     mappings.push({ linuxPath: linux, windowsPath: windows });
   }
 
-  // Fallback defaults for this Jellyfin setup
-  if (mappings.length === 0) {
-    const usb1Linux = process.env.USB1_LINUX ?? "/mnt/usb1";
-    const usb1Windows = process.env.USB1_WINDOWS ?? "\\\\100.69.132.23\\usbshare1-2";
-    mappings.push({ linuxPath: usb1Linux, windowsPath: usb1Windows });
-
-    const videoLinux = process.env.VIDEO_LINUX ?? "/mnt/video";
-    const videoWindows = process.env.VIDEO_WINDOWS ?? "";
-    if (videoWindows) {
-      mappings.push({ linuxPath: videoLinux, windowsPath: videoWindows });
-    }
-  }
-
   return mappings;
 }
 

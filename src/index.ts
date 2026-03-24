@@ -12,15 +12,19 @@ import { classifyQuality } from "./quality.js";
 
 // ─── Config ────────────────────────────────────────────────────────────────
 
-const JELLYFIN_URL = process.env.JELLYFIN_URL ?? "http://100.114.52.11:8096";
+const JELLYFIN_URL = process.env.JELLYFIN_URL;
 const JELLYFIN_TOKEN = process.env.JELLYFIN_TOKEN ?? "";
 
+if (!JELLYFIN_URL) {
+  process.stderr.write("ERROR: JELLYFIN_URL environment variable is required.\n");
+  process.exit(1);
+}
 if (!JELLYFIN_TOKEN) {
   process.stderr.write("ERROR: JELLYFIN_TOKEN environment variable is required.\n");
   process.exit(1);
 }
 
-const jellyfin = new JellyfinClient(JELLYFIN_URL, JELLYFIN_TOKEN);
+const jellyfin = new JellyfinClient(JELLYFIN_URL!, JELLYFIN_TOKEN);
 const pathMappings = getMappingsFromEnv();
 
 // ─── Helpers ───────────────────────────────────────────────────────────────
