@@ -1,0 +1,83 @@
+specification {
+  element actor
+  element system
+  element container
+  element component
+}
+
+model {
+  user = actor 'MCP Client' {
+    description 'VS Code Copilot Chat or any MCP-compatible client that invokes tools over stdio'
+  }
+
+  jellyfinServer = system 'Jellyfin Server' {
+    description 'Media server that manages the library and exposes a REST API'
+  }
+
+  fileSystem = system 'File System' {
+    description 'Windows file shares (UNC paths) where the actual media files are stored'
+  }
+
+  mcpServer = system 'jellyfin-mcp' {
+    description 'MCP server that exposes Jellyfin library management as tools'
+
+    indexTs = container 'index.ts' {
+      description 'MCP server entry point. Registers all tools and routes requests to their implementations.'
+      technology 'TypeScript / @modelcontextprotocol/sdk'
+
+      getStats       = component 'get_stats'            { description 'Library health overview: total counts, missing metadata, duplicate groups' }
+      findMeta       = component 'find_missing_metadata'{ description 'Finds movies/series missing TMDB or IMDB identifiers' }
+      analyzeDups    = component 'analyze_duplicates'   { description 'Groups items by TMDB ID and classifies quality of each version' }
+      findCd         = component 'find_cd_splits'       { description 'Detects CD-split files (CD1/CD2, Part1/Part2) not stacking correctly' }
+      genPlan        = component 'generate_move_plan'   { description 'Generates rename plan for multi-version consolidation' }
+      execMove       = component 'execute_move'         { description 'Moves/renames a file on disk (dry_run: true by default)' }
+      refreshLib     = component 'refresh_library'      { description 'Triggers a Jellyfin library rescan' }
+      analyzeTv      = component 'analyze_tv_structure' { description 'Full structural audit of the TV library' }
+    }
+
+    jellyfinTs = container 'jellyfin.ts' {
+      description 'Jellyfin REST API client. Performs HTTP GET and POST requests with the API token.'
+      technology 'TypeScript / node:http & node:https'
+    }
+
+    pathsTs = container 'paths.ts' {
+      description 'Converts Linux paths (as Jellyfin reports them) to Windows UNC paths using MOUNT_* environment variables.'
+      technology 'TypeScript'
+    }
+
+    qualityTs = container 'quality.ts' {
+      description 'Classifies video quality (resolution, source, codec) from file path strings and generates version labels.'
+      technology 'TypeScript'
+    }
+  }
+
+  // External relationships
+  user -> mcpServer 'Calls tools via stdio (JSON-RPC / MCP protocol)'
+  mcpServer -> jellyfinServer 'REST API calls (GET /Items, POST /Library/Refresh)'
+  mcpServer -> fileSystem 'File move/rename operations via Windows UNC paths'
+
+  // Internal relationships
+  indexTs -> jellyfinTs  'Fetches library items and triggers refresh'
+  indexTs -> pathsTs     'Converts Linux paths to Windows UNC'
+  indexTs -> qualityTs   'Classifies video quality for duplicate analysis'
+}
+
+views {
+  view index of mcpServer {
+    title 'jellyfin-mcp — System Context'
+    include *
+    include user
+    include jellyfinServer
+    include fileSystem
+  }
+
+  view containers of mcpServer {
+    title 'jellyfin-mcp — Containers'
+    include *
+  }
+
+  view tools of indexTs {
+    title 'jellyfin-mcp — MCP Tools'
+    include *
+  }
+}
