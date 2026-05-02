@@ -6,6 +6,8 @@ updates:
       interval: weekly
       day: monday
       time: "03:00"
+    cooldown:
+      default-days: 7
     groups:
       all:
         patterns:
