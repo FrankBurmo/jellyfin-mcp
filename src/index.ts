@@ -171,6 +171,28 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
         "Returns a full report with paths and recommendations.",
       inputSchema: { type: "object", properties: {} },
     },
+    {
+      name: "find_movie_collections",
+      description:
+        "Scans all movies and groups those that belong to the same TMDB franchise/collection " +
+        "(e.g. Harry Potter, James Bond, Marvel). Uses the TmdbCollection provider ID. " +
+        "Returns each collection group with movie titles, paths, and instructions for " +
+        "how to make them appear as a proper collection (Box Set) in Jellyfin.",
+      inputSchema: {
+        type: "object",
+        properties: {
+          min_movies: {
+            type: "number",
+            description: "Minimum number of movies in a group to include. Default: 2",
+          },
+          sort_by: {
+            type: "string",
+            enum: ["name", "count"],
+            description: "Sort results by collection name or movie count. Default: name",
+          },
+        },
+      },
+    },
   ],
 }));
 
@@ -222,6 +244,14 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
 
     case "analyze_tv_structure":
       return ok(await analyzeTvStructure());
+
+    case "find_movie_collections":
+      return ok(
+        await findMovieCollections(
+          arg(a, "min_movies", 2),
+          arg(a, "sort_by", "name"),
+        ),
+      );
 
     default:
       throw new Error(`Unknown tool: ${name}`);
@@ -746,6 +776,68 @@ async function analyzeTvStructure() {
     release_pack_series_folders: releaseFolderSeries,
     episodes_in_own_folders: episodesInOwnFolders,
     wrong_season_numbers: wrongSeasonNumbers,
+  };
+}
+
+async function findMovieCollections(minMovies: number, sortBy: string) {
+  const { Items } = await jellyfin.getItems({
+    IncludeItemTypes: "Movie",
+    Recursive: "true",
+    Fields: "Path,ProviderIds",
+  });
+
+  // Group movies by TmdbCollection ID
+  const collectionMap = new Map<string, JellyfinItem[]>();
+  let noCollectionCount = 0;
+
+  for (const item of Items) {
+    const collId = item.ProviderIds?.TmdbCollection;
+    if (!collId) {
+      noCollectionCount++;
+      continue;
+    }
+    if (!collectionMap.has(collId)) collectionMap.set(collId, []);
+    collectionMap.get(collId)!.push(item);
+  }
+
+  const groups = [...collectionMap.entries()]
+    .filter(([, movies]) => movies.length >= minMovies)
+    .map(([tmdbCollectionId, movies]) => {
+      const sorted = [...movies].sort((a, b) => a.Name.localeCompare(b.Name));
+      return {
+        tmdb_collection_id: tmdbCollectionId,
+        tmdb_collection_url: `https://www.themoviedb.org/collection/${tmdbCollectionId}`,
+        movie_count: movies.length,
+        movies: sorted.map((m) => ({
+          name: m.Name,
+          tmdb_id: m.ProviderIds?.Tmdb ?? null,
+          path: m.Path ?? "(no path)",
+        })),
+      };
+    });
+
+  if (sortBy === "count") groups.sort((a, b) => b.movie_count - a.movie_count);
+  else groups.sort((a, b) => groups.indexOf(a) - groups.indexOf(b)); // preserve insertion (name-ish)
+
+  // Sort by first movie name as proxy for collection name
+  if (sortBy === "name") {
+    groups.sort((a, b) =>
+      (a.movies[0]?.name ?? "").localeCompare(b.movies[0]?.name ?? ""),
+    );
+  }
+
+  return {
+    total_collections_found: groups.length,
+    total_movies_in_collections: groups.reduce((s, g) => s + g.movie_count, 0),
+    movies_without_collection_id: noCollectionCount,
+    collections: groups,
+    how_to_setup_in_jellyfin: [
+      "1. AUTOMATISK: Jellyfin kan opprette samlinger automatisk. Gå til Dashboard → Libraries → (filmbibliotek) → Edit → huk av 'Enable automatic box sets for movie collections'.",
+      "2. MANUELT: Dashboard → Home → klikk '+' ved siden av Collections → New Collection → gi den navn og legg til filmene.",
+      "3. NFOUTVIDELSE: Legg til en 'collection.nfo' eller sett <set>-taggen i movie.nfo for hver film: <set><name>Kolleksjonsnavn</name></set>.",
+      "4. KONTROLLER: Etter å ha aktivert auto-samlinger, kjør 'refresh_library' for å la Jellyfin opprette Box Sets basert på TMDB-kolleksjons-ID.",
+      "5. TIPS: Bruk tmdb_collection_url til å slå opp det offisielle kolleksjonsnavnet på TMDB.",
+    ],
   };
 }
 
